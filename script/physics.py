@@ -15,7 +15,7 @@ def generate_physics_data(data_path):
     with h5py.File(data_path, 'r') as file:
         #读取events数据集
         events = file['events'][:]
-    
+    events = events[np.abs(events['n_det'] - 8) <0.1]
     energy_prompt = events['energy_prompt_MeV']
     energy_delayed = events['energy_delayed_MeV']
     log_time_diff = np.log(events['delta_t_us'])
