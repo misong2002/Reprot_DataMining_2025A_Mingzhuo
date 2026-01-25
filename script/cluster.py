@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import DBSCAN, AgglomerativeClustering
+from sklearn.cluster import KMeans, DBSCAN
 import hdbscan
 
 
@@ -54,19 +54,6 @@ def run_dbscan(z, eps, min_samples):
 
 
 # ----------------------------
-# Run Single-linkage (level 3)
-# ----------------------------
-def run_single_linkage(z, n_clusters):
-    agg = AgglomerativeClustering(
-        n_clusters=n_clusters,
-        linkage="single",
-        affinity="euclidean",
-    )
-    labels = agg.fit_predict(z)
-    return labels
-
-
-# ----------------------------
 # Main
 # ----------------------------
 def main(args):
@@ -89,7 +76,8 @@ def main(args):
         min_samples=args.min_samples_1,
     )
 
-    print("HDBSCAN-1 clusters:", np.unique(labels1[labels1 >= 0]).size)
+    print("HDBSCAN-1 clusters:",
+          np.unique(labels1[labels1 >= 0]).size)
 
     for cid, persistence in enumerate(hdb1.cluster_persistence_):
         mask = labels1 == cid
@@ -102,7 +90,8 @@ def main(args):
     mask_lvl1_noise = final_labels == -1
     z_lvl1_noise = z_scaled[mask_lvl1_noise]
 
-    print("Assigned labels after HDBSCAN-1:", np.unique(final_labels[final_labels >= 0]).size)
+    print("Assigned labels after HDBSCAN-1:",
+          np.unique(final_labels[final_labels >= 0]).size)
 
     # ======================================================
     # 2) DBSCAN level 2 (on noise + low-persistence clusters)
@@ -114,8 +103,10 @@ def main(args):
             min_samples=args.min_samples_2,
         )
 
-        print("DBSCAN-2 clusters:", np.unique(labels2[labels2 >= 0]).size)
-        print("Noise rate:", np.sum(labels2 == -1) / len(labels2))
+        print("DBSCAN-2 clusters:",
+              np.unique(labels2[labels2 >= 0]).size)
+        print("Noise rate:",
+              np.sum(labels2 == -1) / len(labels2))
 
         noise_indices_lvl1 = np.where(mask_lvl1_noise)[0]
 
@@ -129,18 +120,26 @@ def main(args):
     mask_lvl2_noise = final_labels == -1
     z_lvl2_noise = z_scaled[mask_lvl2_noise]
 
-    print("Assigned labels after DBSCAN-2:", np.unique(final_labels[final_labels >= 0]).size)
+    print("Assigned labels after DBSCAN-2:",
+          np.unique(final_labels[final_labels >= 0]).size)
 
     # ======================================================
-    # 3) Single-linkage (forced covering of remaining points)
+    # 3) KMeans (forced covering of remaining points)
     # ======================================================
     if len(z_lvl2_noise) > 0:
-        print(f"Single-linkage on {len(z_lvl2_noise)} remaining points")
-        sl_labels = run_single_linkage(z_lvl2_noise, args.single_linkage_clusters)
+        print(f"KMeans on {len(z_lvl2_noise)} remaining points")
+
+        kmeans = KMeans(
+            n_clusters=args.kmeans_clusters,
+            n_init=20,
+            random_state=args.seed,
+        )
+
+        k_labels = kmeans.fit_predict(z_lvl2_noise)
         noise_indices_lvl2 = np.where(mask_lvl2_noise)[0]
 
-        for k in range(args.single_linkage_clusters):
-            final_labels[noise_indices_lvl2[sl_labels == k]] = current_label
+        for k in range(args.kmeans_clusters):
+            final_labels[noise_indices_lvl2[k_labels == k]] = current_label
             current_label += 1
 
     # ======================================================
@@ -151,21 +150,20 @@ def main(args):
     np.savez(
         args.output,
         labels=final_labels,
-        latent=z,
-        latent_scaled=z_scaled,
         params=dict(
             min_cluster_size_1=args.min_cluster_size_1,
             min_samples_1=args.min_samples_1,
             persistence_1=args.persistence_1,
             dbscan_eps_2=args.dbscan_eps_2,
             min_samples_2=args.min_samples_2,
-            single_linkage_clusters=args.single_linkage_clusters,
+            kmeans_clusters=args.kmeans_clusters,
             seed=args.seed,
         ),
     )
 
     print("Clustering finished")
-    print("Total clusters:", np.unique(final_labels[final_labels >= 0]).size)
+    print("Total clusters:",
+          np.unique(final_labels[final_labels >= 0]).size)
     print("Saved to:", args.output)
 
 
@@ -174,7 +172,7 @@ def main(args):
 # ----------------------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Hierarchical clustering: HDBSCAN → DBSCAN → Single-linkage"
+        description="Hierarchical clustering: HDBSCAN → DBSCAN → KMeans"
     )
 
     parser.add_argument("--input", type=str, default="data/latent.npz")
@@ -189,8 +187,8 @@ if __name__ == "__main__":
     parser.add_argument("--dbscan_eps_2", type=float, default=0.1)
     parser.add_argument("--min_samples_2", type=int, default=100)
 
-    # Single-linkage
-    parser.add_argument("--single_linkage_clusters", type=int, default=4)
+    # KMeans
+    parser.add_argument("--kmeans_clusters", type=int, default=5)
 
     parser.add_argument("--seed", type=int, default=42)
 

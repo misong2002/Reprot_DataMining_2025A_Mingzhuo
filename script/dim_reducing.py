@@ -22,9 +22,7 @@ def set_seed(seed=21):
 # Data loading & preprocessing
 # ----------------------------
 def load_and_scale_data(npz_path, feature_names):
-    npz = np.load(npz_path)
-    data = npz[npz.files[0]]  # structured array
-
+    data = np.load(npz_path)
     X = np.vstack([data[name] for name in feature_names]).T.astype(np.float32)
 
     scaler = StandardScaler()
@@ -150,9 +148,6 @@ def main():
     np.savez(
         args.o,
         latent=Z,
-        original_features=X,
-        scaled_features=X_scaled,
-        feature_names=feature_names,
         latent_dim=args.ldim,
     )
 
